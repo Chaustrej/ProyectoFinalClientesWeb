@@ -123,22 +123,32 @@ form label {
   font-size: 0.9rem;
 }
 
-form input,
-form select,
-form textarea {
+input,
+select,
+textarea {
   display: block;
-  width: 100%;
-  margin-top: 0.35rem;
   padding: 0.5rem;
   border: 1px solid var(--color-borde);
   border-radius: 6px;
   font-size: 0.95rem;
+  background-color: white;
+  color: var(--color-texto);
+  font-family: inherit;
 }
 
-form input:focus,
-form select:focus {
+form input,
+form select,
+form textarea {
+  width: 100%;
+  margin-top: 0.35rem;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
   outline: none;
   border-color: var(--color-primario);
+  box-shadow: 0 0 0 2px rgba(46, 125, 50, 0.15);
 }
 
 footer {
@@ -155,4 +165,40 @@ footer {
   padding: 2rem;
   color: #6b7280;
   font-style: italic;
+}
+
+form input[type="color"] {
+  padding: 0;
+  width: 60px;
+  height: 40px;
+  border: 1px solid var(--color-borde);
+  border-radius: 6px;
+  cursor: pointer;
+}
+/* ===== Detalle de equipo ===== */
+.stats-table {
+  width: 100%;
+  margin-top: 1rem;
+  border-collapse: collapse;
+}
+
+.stats-table th,
+.stats-table td {
+  padding: 0.5rem;
+  text-align: center;
+  border-bottom: 1px solid var(--color-borde);
+}
+
+.players-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.8rem;
+  margin: 1rem 0;
+}
+
+.matches-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
 }
