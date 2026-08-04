@@ -4,22 +4,27 @@
   <meta charset="UTF-8">
   <title>LeagueHub</title>
   <link rel="stylesheet" href="css/styles.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 </head>
 <body>
-  <nav>
-    <a href="#dashboard">Inicio</a>
-    <a href="#leagues">Ligas</a>
-    <a href="#teams">Equipos</a>
-    <a href="#players">Jugadores</a>
-    <a href="#matches">Partidos</a>
-    <a href="#stats">Estadísticas</a>
-  </nav>
+<nav>
+  <a href="#dashboard" id="nav-logo"><strong>LeagueHub</strong></a>
+  <a href="#dashboard">Inicio</a>
+  <a href="#leagues">Ligas</a>
+  <a href="#teams">Equipos</a>
+  <a href="#players">Jugadores</a>
+  <a href="#matches">Partidos</a>
+  <a href="#stats">Estadísticas</a>
+  <span id="nav-active-league" class="nav-league-indicator"></span>
+</nav>
 
   <main id="app">
   </main>
 
   <footer>
     <p>LeagueHub — Juan Chaustre y Nestor Rincon — 2026</p>
+      <p id="db-status" class="db-status">Base de datos: <span>verificando...</span></p>
+
   </footer>
 
   <script type="module" src="js/app.js"></script>
