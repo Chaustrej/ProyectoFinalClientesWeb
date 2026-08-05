@@ -202,3 +202,196 @@ form input[type="color"] {
   gap: 0.5rem;
   margin-bottom: 1.5rem;
 }
+
+.match-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  text-decoration: none;
+  color: var(--color-texto);
+}
+
+.badge {
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: bold;
+  color: white;
+}
+
+.badge-win { background-color: #2e7d32; }
+.badge-loss { background-color: #c62828; }
+.badge-draw { background-color: #757575; }
+
+.btn-link {
+  display: inline-block;
+  background-color: var(--color-primario);
+  color: white;
+  text-decoration: none;
+  padding: 0.55rem 1.1rem;
+  border-radius: var(--radio);
+  font-size: 0.95rem;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.btn-link:hover {
+  background-color: var(--color-primario-hover);
+  transform: translateY(-1px);
+}
+
+.btn-link-secondary {
+  display: inline-block;
+  background-color: #6b7280;
+  color: white;
+  text-decoration: none;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radio);
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.btn-link-secondary:hover {
+  background-color: #4b5563;
+}
+/* ===== Filtros ===== */
+.filters {
+  display: flex;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.2rem;
+}
+
+.filters input,
+.filters select {
+  padding: 0.5rem;
+  border: 1px solid var(--color-borde);
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.player-card {
+  display: block;
+  text-decoration: none;
+  color: var(--color-texto);
+}
+/* ===== Imágenes: escudos y fotos ===== */
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.shield-img {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  border-radius: 6px;
+}
+
+.shield-placeholder {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: white;
+  font-weight: bold;
+  font-size: 0.85rem;
+}
+
+.player-photo {
+  width: 60px;
+  height: 60px;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.player-photo-placeholder {
+  width: 60px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background-color: var(--color-primario);
+  color: white;
+  font-weight: bold;
+  font-size: 1.3rem;
+  margin-bottom: 0.5rem;
+}
+
+/* ===== Detalle de jugador ===== */
+.player-card-detail {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+  background-color: var(--color-tarjeta);
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio);
+  padding: 1.5rem;
+  margin: 1rem 0;
+}
+
+.player-photo-large {
+  width: 90px;
+  height: 90px;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.player-photo-placeholder-large {
+  width: 90px;
+  height: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background-color: var(--color-primario);
+  color: white;
+  font-weight: bold;
+  font-size: 2rem;
+}
+
+
+.player-card {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-tarjeta);
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio);
+  padding: 1.2rem;
+  margin-bottom: 1rem;
+  box-shadow: var(--sombra);
+  border-top: 6px solid var(--team-color, #ccc);
+  min-height: 260px; 
+}
+
+.player-card a {
+  display: flex;
+  flex-direction: column;
+  text-decoration: none;
+  color: var(--color-texto);
+  flex-grow: 1; 
+}
+
+.player-card .player-name {
+  min-height: 2.6rem; 
+  display: block;
+}
+
+.player-card button {
+  margin-top: auto; 
+}
+
+.team-chip {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: white;
+  margin: 0.3rem 0;
+}
