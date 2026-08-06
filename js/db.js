@@ -844,3 +844,187 @@ async function getScoresByRound(leagueId) {
 
   return byRound;
 }
+
+
+// --- Exportar / Importar liga completa ---
+
+async function exportLeague(leagueId) {
+  const league = await getById('leagues', leagueId);
+  const teams = await getTeamsByLeague(leagueId);
+  const matches = await getAllByIndex('matches', 'by_league', Number(leagueId));
+
+  const players = [];
+  for (const team of teams) {
+    const teamPlayers = await getPlayersByTeam(team.id);
+    players.push(...teamPlayers);
+  }
+
+  const events = [];
+  for (const match of matches) {
+    const matchEvents = await getAllByIndex('events', 'by_match', match.id);
+    events.push(...matchEvents);
+  }
+
+  return {
+    exportedAt: new Date().toISOString(),
+    league,
+    teams,
+    players,
+    matches,
+    events
+  };
+}
+
+function validateImportData(data) {
+  if (!data || typeof data !== 'object') return false;
+  if (!data.league || !data.league.name || !data.league.sport || !data.league.mode) return false;
+  if (!Array.isArray(data.teams) || !Array.isArray(data.players) ||
+      !Array.isArray(data.matches) || !Array.isArray(data.events)) return false;
+  return true;
+}
+
+function importLeague(data, newName) {
+  return new Promise((resolve, reject) => {
+    const tx = dbInstance.transaction(['leagues', 'teams', 'players', 'matches', 'events'], 'readwrite');
+    const leaguesStore = tx.objectStore('leagues');
+    const teamsStore = tx.objectStore('teams');
+    const playersStore = tx.objectStore('players');
+    const matchesStore = tx.objectStore('matches');
+    const eventsStore = tx.objectStore('events');
+
+    function addTo(store, obj) {
+      return new Promise((res, rej) => {
+        const req = store.add(obj);
+        req.onsuccess = () => res(req.result);
+        req.onerror = () => rej(req.error);
+      });
+    }
+    function putTo(store, obj) {
+      return new Promise((res, rej) => {
+        const req = store.put(obj);
+        req.onsuccess = () => res();
+        req.onerror = () => rej(req.error);
+      });
+    }
+    function getFrom(store, id) {
+      return new Promise((res, rej) => {
+        const req = store.get(id);
+        req.onsuccess = () => res(req.result);
+        req.onerror = () => rej(req.error);
+      });
+    }
+
+    (async () => {
+      try {
+        const leagueCopy = { ...data.league };
+        delete leagueCopy.id;
+        leagueCopy.name = newName || data.league.name;
+        leagueCopy.isActive = false;
+        const newLeagueId = await addTo(leaguesStore, leagueCopy);
+
+        const teamIdMap = {};
+        for (const team of data.teams) {
+          const teamCopy = { ...team };
+          const oldId = teamCopy.id;
+          delete teamCopy.id;
+          teamCopy.leagueId = newLeagueId;
+          const newId = await addTo(teamsStore, teamCopy);
+          teamIdMap[oldId] = newId;
+        }
+
+        for (const player of data.players) {
+          const playerCopy = { ...player };
+          delete playerCopy.id;
+          playerCopy.teamId = teamIdMap[player.teamId];
+          await addTo(playersStore, playerCopy);
+        }
+
+        const matchIdMap = {};
+        for (const match of data.matches) {
+          const matchCopy = { ...match };
+          const oldId = matchCopy.id;
+          delete matchCopy.id;
+          matchCopy.leagueId = newLeagueId;
+          matchCopy.homeTeamId = match.homeTeamId ? teamIdMap[match.homeTeamId] : null;
+          matchCopy.awayTeamId = match.awayTeamId ? teamIdMap[match.awayTeamId] : null;
+          matchCopy.nextMatchId = null;
+          const newId = await addTo(matchesStore, matchCopy);
+          matchIdMap[oldId] = newId;
+        }
+
+        for (const ev of data.events) {
+          const evCopy = { ...ev };
+          delete evCopy.id;
+          evCopy.matchId = matchIdMap[ev.matchId];
+          await addTo(eventsStore, evCopy);
+        }
+
+    
+        for (const match of data.matches) {
+          if (match.nextMatchId) {
+            const newMatchId = matchIdMap[match.id];
+            const newMatch = await getFrom(matchesStore, newMatchId);
+            newMatch.nextMatchId = matchIdMap[match.nextMatchId];
+            await putTo(matchesStore, newMatch);
+          }
+        }
+
+        resolve();
+      } catch (err) {
+        reject(err);
+      }
+    })();
+
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(new Error('Error al importar la liga'));
+  });
+}
+
+// --- Validaciones de unicidad ---
+
+async function isTeamNameTaken(leagueId, name, excludeTeamId = null) {
+  const teams = await getTeamsByLeague(leagueId);
+  return teams.some(t =>
+    t.name.trim().toLowerCase() === name.trim().toLowerCase() &&
+    t.id !== Number(excludeTeamId)
+  );
+}
+
+async function isPlayerNumberTaken(teamId, number, excludePlayerId = null) {
+  if (number === null) return false;
+  const players = await getPlayersByTeam(teamId);
+  return players.some(p =>
+    p.number === number && p.id !== Number(excludePlayerId)
+  );
+}
+
+// --- Partidos: eliminar (solo programados, modalidad liga) y editar fecha ---
+
+function deleteMatch(matchId) {
+  return remove('matches', matchId);
+}
+
+async function updateMatchDate(matchId, newDate) {
+  const match = await getById('matches', matchId);
+  if (!match) throw new Error('Partido no encontrado');
+  match.date = newDate;
+  return update('matches', match);
+}
+
+export {
+  openDB, add, getAll, getAllByIndex, getStore,
+  getAllLeagues, setActiveLeague, getActiveLeague,
+  getTeamsByLeague, getMatchesByTeam, deleteTeamCascade, deleteLeagueCascade,
+  update, getById, remove,
+  getPlayersByTeam, getUpcomingMatchesByTeam, getFinishedMatchesByTeam, getTeamPosition,
+  getPlayersByLeague, getEventsByPlayer,
+  getPlayerMatchHistory,
+  generateFixture, generateBracket,
+  getMatchEvents, finalizeMatch, undoMatch,
+  getStandings, getTopScorers, getMatchesGroupedByRound,
+  getNextMatch, getLastFinishedMatch,
+  getPointsEvolutionByTeam, getScoresByRound,
+  exportLeague, validateImportData, importLeague,
+  isTeamNameTaken, isPlayerNumberTaken,
+  deleteMatch, updateMatchDate
+};
