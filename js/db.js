@@ -114,7 +114,7 @@ function remove(storeName, id) {
   });
 }
 
-
+// --- Ligas ---
 
 function getAllLeagues() {
   return getAll('leagues');
@@ -145,7 +145,7 @@ async function getActiveLeague() {
   return leagues.find(l => l.isActive) || null;
 }
 
-
+// --- Equipos ---
 
 function getTeamsByLeague(leagueId) {
   return getAllByIndex('teams', 'by_league', Number(leagueId));
@@ -261,6 +261,8 @@ function deleteLeagueCascade(leagueId) {
     tx.onabort = () => reject(new Error('No se pudo eliminar la liga. Intenta de nuevo.'));
   });
 }
+// --- Detalle de equipo ---
+
 function getPlayersByTeam(teamId) {
   return getAllByIndex('players', 'by_team', Number(teamId));
 }
@@ -291,6 +293,7 @@ async function getTeamPosition(teamId, leagueId) {
   return sorted.findIndex(t => t.id === Number(teamId)) + 1;
 }
 
+// --- Jugadores ---
 
 async function getPlayersByLeague(leagueId) {
   const teams = await getTeamsByLeague(leagueId);
@@ -328,6 +331,7 @@ async function getPlayerMatchHistory(playerId) {
   return history;
 }
 
+// --- Generación de Fixture  ---
 
 function generateFixture(leagueId, teams, roundFormat) {
   return new Promise((resolve, reject) => {
@@ -381,6 +385,7 @@ function generateFixture(leagueId, teams, roundFormat) {
   });
 }
 
+// --- Generación de Bracket  ---
 
 function getRoundName(matchesInRound, totalTeams) {
   if (totalTeams === 4) {
@@ -472,7 +477,8 @@ function generateBracket(leagueId, teams) {
             currentRoundIds.push(newId);
           }
  
-
+          // Enlazamos cada par de partidos de la ronda anterior con
+          // el partido correspondiente de esta ronda
           for (let i = 0; i < previousRoundMatchIds.length; i += 2) {
             const nextId = currentRoundIds[i / 2];
  
@@ -500,6 +506,8 @@ function generateBracket(leagueId, teams) {
   });
 }
 
+// --- Detalle de partido: eventos ---
+
 async function getMatchEvents(matchId) {
   const events = await getAllByIndex('events', 'by_match', Number(matchId));
   for (const ev of events) {
@@ -510,6 +518,7 @@ async function getMatchEvents(matchId) {
   return events;
 }
 
+// --- Operación de integridad: Finalizar Partido ---
 
 function finalizeMatch(matchId, events, mode) {
   return new Promise((resolve, reject) => {
@@ -621,7 +630,7 @@ function updateTeamStats(team, scoredFor, scoredAgainst) {
   }
 }
 
-
+// --- Operación de integridad inversa: Deshacer Partido ---
 
 function undoMatch(matchId, mode) {
   return new Promise((resolve, reject) => {
@@ -735,4 +744,103 @@ function revertTeamStats(team, scoredFor, scoredAgainst) {
   } else {
     team.lost = Math.max(0, team.lost - 1);
   }
+}
+
+// --- Estadísticas: tabla de posiciones y rankings ---
+
+async function getStandings(leagueId) {
+  const teams = await getTeamsByLeague(leagueId);
+  return [...teams].sort((a, b) => {
+    if (b.points !== a.points) return b.points - a.points;
+    const diffA = a.scoredFor - a.scoredAgainst;
+    const diffB = b.scoredFor - b.scoredAgainst;
+    if (diffB !== diffA) return diffB - diffA;
+    return b.scoredFor - a.scoredFor;
+  });
+}
+
+async function getTopScorers(leagueId, limit = 10) {
+  const players = await getPlayersByLeague(leagueId);
+  return [...players]
+    .sort((a, b) => b.totalScored - a.totalScored)
+    .filter(p => p.totalScored > 0)
+    .slice(0, limit);
+}
+
+async function getMatchesGroupedByRound(leagueId) {
+  const matches = await getAllByIndex('matches', 'by_league', Number(leagueId));
+  const grouped = {};
+  matches.forEach(m => {
+    const round = m.round || 'Sin ronda';
+    if (!grouped[round]) grouped[round] = [];
+    grouped[round].push(m);
+  });
+  return grouped;
+}
+
+// --- Dashboard ---
+
+async function getNextMatch(leagueId) {
+  const matches = await getAllByIndex('matches', 'by_league', Number(leagueId));
+  const now = new Date();
+  const upcoming = matches
+    .filter(m => m.status === 'programado' && m.homeTeamId && m.awayTeamId && new Date(m.date) >= now)
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+  return upcoming[0] || null;
+}
+
+async function getLastFinishedMatch(leagueId) {
+  const matches = await getAllByIndex('matches', 'by_league', Number(leagueId));
+  const finished = matches
+    .filter(m => m.status === 'finalizado')
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+  return finished[0] || null;
+}
+
+// --- Datos para gráficos avanzados de Estadísticas ---
+
+async function getPointsEvolutionByTeam(leagueId) {
+  const teams = await getTeamsByLeague(leagueId);
+  const matches = await getAllByIndex('matches', 'by_league', Number(leagueId));
+  const finished = matches
+    .filter(m => m.status === 'finalizado')
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  const evolution = {};
+  teams.forEach(t => { evolution[t.id] = []; });
+
+  const runningPoints = {};
+  teams.forEach(t => { runningPoints[t.id] = 0; });
+
+  const dateLabels = [];
+
+  finished.forEach(match => {
+    dateLabels.push(new Date(match.date).toLocaleDateString());
+
+    const homePts = match.homeScore > match.awayScore ? 3 : match.homeScore === match.awayScore ? 1 : 0;
+    const awayPts = match.awayScore > match.homeScore ? 3 : match.homeScore === match.awayScore ? 1 : 0;
+
+    runningPoints[match.homeTeamId] += homePts;
+    runningPoints[match.awayTeamId] += awayPts;
+
+    teams.forEach(t => {
+      evolution[t.id].push(runningPoints[t.id]);
+    });
+  });
+
+  return { teams, dateLabels, evolution };
+}
+
+async function getScoresByRound(leagueId) {
+  const matches = await getAllByIndex('matches', 'by_league', Number(leagueId));
+  const finished = matches.filter(m => m.status === 'finalizado');
+
+  const byRound = {};
+  finished.forEach(m => {
+    const round = m.round || 'Sin ronda';
+    if (!byRound[round]) byRound[round] = 0;
+    byRound[round] += (m.homeScore + m.awayScore);
+  });
+
+  return byRound;
 }
