@@ -45,6 +45,6 @@ No requiere instalación ni servidor local.
 | `ChartContainer` | `js/charts.js` | Funciones reutilizables que envuelven Chart.js (barras, líneas, torta, horizontal) |
 | `ConfirmDialog` | `components/confirmDialog.js` | Diálogo modal de confirmación reutilizable (reemplaza `confirm()`) |
 | `Toast` | `components/toast.js` | Notificaciones flotantes de éxito/error (reemplaza `alert()`) |
-| `LoadingState` | *(si lo agregaste)* | Indicador visual de carga reutilizable |
+
 
 ## 5. Esquema de IndexedDB
