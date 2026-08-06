@@ -114,7 +114,7 @@ function remove(storeName, id) {
   });
 }
 
-// --- Ligas ---
+
 
 function getAllLeagues() {
   return getAll('leagues');
@@ -145,7 +145,7 @@ async function getActiveLeague() {
   return leagues.find(l => l.isActive) || null;
 }
 
-// --- Equipos ---
+
 
 function getTeamsByLeague(leagueId) {
   return getAllByIndex('teams', 'by_league', Number(leagueId));
@@ -498,4 +498,241 @@ function generateBracket(leagueId, teams) {
     tx.onerror = () => reject(tx.error);
     tx.onabort = () => reject(new Error('Transacción cancelada'));
   });
+}
+
+async function getMatchEvents(matchId) {
+  const events = await getAllByIndex('events', 'by_match', Number(matchId));
+  for (const ev of events) {
+    const player = await getById('players', ev.playerId);
+    ev.playerName = player ? player.name : 'Jugador eliminado';
+    ev.teamId = player ? player.teamId : null;
+  }
+  return events;
+}
+
+
+function finalizeMatch(matchId, events, mode) {
+  return new Promise((resolve, reject) => {
+    const tx = dbInstance.transaction(['matches', 'teams', 'players', 'events'], 'readwrite');
+    const matchesStore = tx.objectStore('matches');
+    const teamsStore = tx.objectStore('teams');
+    const playersStore = tx.objectStore('players');
+    const eventsStore = tx.objectStore('events');
+
+    const matchRequest = matchesStore.get(Number(matchId));
+
+    matchRequest.onsuccess = () => {
+      const match = matchRequest.result;
+      if (!match) {
+        tx.abort();
+        return;
+      }
+
+      const homeScore = events.filter(e => e.team === 'home').length;
+      const awayScore = events.filter(e => e.team === 'away').length;
+
+      match.status = 'finalizado';
+      match.homeScore = homeScore;
+      match.awayScore = awayScore;
+      matchesStore.put(match);
+
+      const homeTeamRequest = teamsStore.get(match.homeTeamId);
+      homeTeamRequest.onsuccess = () => {
+        const homeTeam = homeTeamRequest.result;
+        updateTeamStats(homeTeam, homeScore, awayScore);
+        teamsStore.put(homeTeam);
+      };
+
+      const awayTeamRequest = teamsStore.get(match.awayTeamId);
+      awayTeamRequest.onsuccess = () => {
+        const awayTeam = awayTeamRequest.result;
+        updateTeamStats(awayTeam, awayScore, homeScore);
+        teamsStore.put(awayTeam);
+      };
+
+      const scoredByPlayer = {};
+      events.forEach(ev => {
+        if (ev.playerId === null || ev.playerId === undefined) return;
+        scoredByPlayer[ev.playerId] = (scoredByPlayer[ev.playerId] || 0) + 1;
+      });
+
+      Object.keys(scoredByPlayer).forEach(playerId => {
+        const playerRequest = playersStore.get(Number(playerId));
+        playerRequest.onsuccess = () => {
+          const player = playerRequest.result;
+          player.matchesPlayed += 1;
+          player.totalScored += scoredByPlayer[playerId];
+          playersStore.put(player);
+        };
+      });
+
+      events.forEach(ev => {
+        if (ev.playerId === null || ev.playerId === undefined) return;
+        eventsStore.add({
+          matchId: Number(matchId),
+          playerId: Number(ev.playerId),
+          type: ev.type || 'anotacion',
+          minute: ev.minute || null
+        });
+      });
+
+      if (mode === 'eliminacion' && match.nextMatchId) {
+        const winnerTeamId = homeScore > awayScore ? match.homeTeamId : match.awayTeamId;
+
+        const nextMatchRequest = matchesStore.get(match.nextMatchId);
+        nextMatchRequest.onsuccess = () => {
+          const nextMatch = nextMatchRequest.result;
+          if (!nextMatch) return;
+
+          if (nextMatch.homeTeamId === null) {
+            nextMatch.homeTeamId = winnerTeamId;
+          } else {
+            nextMatch.awayTeamId = winnerTeamId;
+          }
+
+          if (nextMatch.homeTeamId !== null && nextMatch.awayTeamId !== null) {
+            nextMatch.status = 'programado';
+          }
+
+          matchesStore.put(nextMatch);
+        };
+      }
+    };
+
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(new Error('No se pudo finalizar el partido. Intenta de nuevo.'));
+  });
+}
+
+function updateTeamStats(team, scoredFor, scoredAgainst) {
+  team.played += 1;
+  team.scoredFor += scoredFor;
+  team.scoredAgainst += scoredAgainst;
+
+  if (scoredFor > scoredAgainst) {
+    team.won += 1;
+    team.points += 3;
+  } else if (scoredFor === scoredAgainst) {
+    team.drawn += 1;
+    team.points += 1;
+  } else {
+    team.lost += 1;
+  }
+}
+
+
+
+function undoMatch(matchId, mode) {
+  return new Promise((resolve, reject) => {
+    const tx = dbInstance.transaction(['matches', 'teams', 'players', 'events'], 'readwrite');
+    const matchesStore = tx.objectStore('matches');
+    const teamsStore = tx.objectStore('teams');
+    const playersStore = tx.objectStore('players');
+    const eventsStore = tx.objectStore('events');
+    const eventsIndex = eventsStore.index('by_match');
+
+    const matchRequest = matchesStore.get(Number(matchId));
+
+    matchRequest.onsuccess = () => {
+      const match = matchRequest.result;
+      if (!match || match.status !== 'finalizado') {
+        tx.abort();
+        return;
+      }
+
+      if (mode === 'eliminacion' && match.nextMatchId) {
+        const nextMatchRequest = matchesStore.get(match.nextMatchId);
+        nextMatchRequest.onsuccess = () => {
+          const nextMatch = nextMatchRequest.result;
+          if (nextMatch && nextMatch.status === 'finalizado') {
+            tx.abort();
+            return;
+          }
+          proceedUndo();
+        };
+      } else {
+        proceedUndo();
+      }
+
+      function proceedUndo() {
+        const homeScore = match.homeScore;
+        const awayScore = match.awayScore;
+
+        match.status = 'programado';
+        match.homeScore = null;
+        match.awayScore = null;
+        matchesStore.put(match);
+
+        const homeTeamRequest = teamsStore.get(match.homeTeamId);
+        homeTeamRequest.onsuccess = () => {
+          const homeTeam = homeTeamRequest.result;
+          revertTeamStats(homeTeam, homeScore, awayScore);
+          teamsStore.put(homeTeam);
+        };
+
+        const awayTeamRequest = teamsStore.get(match.awayTeamId);
+        awayTeamRequest.onsuccess = () => {
+          const awayTeam = awayTeamRequest.result;
+          revertTeamStats(awayTeam, awayScore, homeScore);
+          teamsStore.put(awayTeam);
+        };
+
+        const eventsRequest = eventsIndex.getAll(Number(matchId));
+        eventsRequest.onsuccess = () => {
+          const events = eventsRequest.result;
+          const scoredByPlayer = {};
+          events.forEach(ev => {
+            scoredByPlayer[ev.playerId] = (scoredByPlayer[ev.playerId] || 0) + 1;
+          });
+
+          Object.keys(scoredByPlayer).forEach(playerId => {
+            const playerRequest = playersStore.get(Number(playerId));
+            playerRequest.onsuccess = () => {
+              const player = playerRequest.result;
+              player.matchesPlayed = Math.max(0, player.matchesPlayed - 1);
+              player.totalScored = Math.max(0, player.totalScored - scoredByPlayer[playerId]);
+              playersStore.put(player);
+            };
+          });
+        };
+
+        if (mode === 'eliminacion' && match.nextMatchId) {
+          const nextMatchRequest2 = matchesStore.get(match.nextMatchId);
+          nextMatchRequest2.onsuccess = () => {
+            const nextMatch = nextMatchRequest2.result;
+            if (!nextMatch) return;
+
+            if (nextMatch.homeTeamId === match.homeTeamId || nextMatch.homeTeamId === match.awayTeamId) {
+              nextMatch.homeTeamId = null;
+            } else if (nextMatch.awayTeamId === match.homeTeamId || nextMatch.awayTeamId === match.awayTeamId) {
+              nextMatch.awayTeamId = null;
+            }
+            nextMatch.status = 'pendiente';
+            matchesStore.put(nextMatch);
+          };
+        }
+      }
+    };
+
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(new Error('No se puede deshacer: el partido de la siguiente ronda ya está finalizado.'));
+  });
+}
+
+function revertTeamStats(team, scoredFor, scoredAgainst) {
+  team.played = Math.max(0, team.played - 1);
+  team.scoredFor = Math.max(0, team.scoredFor - scoredFor);
+  team.scoredAgainst = Math.max(0, team.scoredAgainst - scoredAgainst);
+
+  if (scoredFor > scoredAgainst) {
+    team.won = Math.max(0, team.won - 1);
+    team.points = Math.max(0, team.points - 3);
+  } else if (scoredFor === scoredAgainst) {
+    team.drawn = Math.max(0, team.drawn - 1);
+    team.points = Math.max(0, team.points - 1);
+  } else {
+    team.lost = Math.max(0, team.lost - 1);
+  }
 }
