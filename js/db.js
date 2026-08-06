@@ -261,3 +261,241 @@ function deleteLeagueCascade(leagueId) {
     tx.onabort = () => reject(new Error('No se pudo eliminar la liga. Intenta de nuevo.'));
   });
 }
+function getPlayersByTeam(teamId) {
+  return getAllByIndex('players', 'by_team', Number(teamId));
+}
+
+async function getUpcomingMatchesByTeam(teamId) {
+  const matches = await getMatchesByTeam(teamId);
+  return matches
+    .filter(m => m.status === 'programado')
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+}
+
+async function getFinishedMatchesByTeam(teamId) {
+  const matches = await getMatchesByTeam(teamId);
+  return matches
+    .filter(m => m.status === 'finalizado')
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+}
+
+async function getTeamPosition(teamId, leagueId) {
+  const teams = await getTeamsByLeague(leagueId);
+  const sorted = [...teams].sort((a, b) => {
+    if (b.points !== a.points) return b.points - a.points;
+    const diffA = a.scoredFor - a.scoredAgainst;
+    const diffB = b.scoredFor - b.scoredAgainst;
+    if (diffB !== diffA) return diffB - diffA;
+    return b.scoredFor - a.scoredFor;
+  });
+  return sorted.findIndex(t => t.id === Number(teamId)) + 1;
+}
+
+
+async function getPlayersByLeague(leagueId) {
+  const teams = await getTeamsByLeague(leagueId);
+  const allPlayers = [];
+
+  for (const team of teams) {
+    const players = await getPlayersByTeam(team.id);
+    players.forEach(p => {
+      p.teamName = team.name;
+      p.teamPrimaryColor = team.primaryColor;
+    });
+    allPlayers.push(...players);
+  }
+
+  return allPlayers;
+}
+
+function getEventsByPlayer(playerId) {
+  return getAllByIndex('events', 'by_player', Number(playerId));
+}
+
+async function getPlayerMatchHistory(playerId) {
+  const events = await getEventsByPlayer(playerId);
+  const matchIds = [...new Set(events.map(e => e.matchId))];
+  const history = [];
+
+  for (const matchId of matchIds) {
+    const match = await getById('matches', matchId);
+    if (!match) continue;
+    const scoredInThisMatch = events.filter(e => e.matchId === matchId).length;
+    history.push({ match, scored: scoredInThisMatch });
+  }
+
+  history.sort((a, b) => new Date(b.match.date) - new Date(a.match.date));
+  return history;
+}
+
+
+function generateFixture(leagueId, teams, roundFormat) {
+  return new Promise((resolve, reject) => {
+    const matches = [];
+    const startDate = new Date();
+    let matchDay = 0;
+
+    for (let i = 0; i < teams.length; i++) {
+      for (let j = i + 1; j < teams.length; j++) {
+        const date = new Date(startDate);
+        date.setDate(date.getDate() + matchDay * 7);
+
+        matches.push({
+          leagueId: Number(leagueId),
+          homeTeamId: teams[i].id,
+          awayTeamId: teams[j].id,
+          date: date.toISOString(),
+          status: 'programado',
+          homeScore: null,
+          awayScore: null,
+          round: null,
+          nextMatchId: null
+        });
+        matchDay++;
+      }
+    }
+
+    if (roundFormat === 'doble') {
+      const returnMatches = matches.map(m => {
+        const date = new Date(startDate);
+        date.setDate(date.getDate() + matchDay * 7);
+        matchDay++;
+        return {
+          ...m,
+          homeTeamId: m.awayTeamId,
+          awayTeamId: m.homeTeamId,
+          date: date.toISOString()
+        };
+      });
+      matches.push(...returnMatches);
+    }
+
+    const tx = dbInstance.transaction('matches', 'readwrite');
+    const store = tx.objectStore('matches');
+
+    matches.forEach(match => store.add(match));
+
+    tx.oncomplete = () => resolve(matches.length);
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(new Error('Transacción cancelada'));
+  });
+}
+
+
+function getRoundName(matchesInRound, totalTeams) {
+  if (totalTeams === 4) {
+    return matchesInRound === 2 ? 'Semifinal' : 'Final';
+  }
+  if (totalTeams === 8) {
+    if (matchesInRound === 4) return 'Cuartos de Final';
+    if (matchesInRound === 2) return 'Semifinal';
+    return 'Final';
+  }
+  if (matchesInRound === 8) return 'Octavos de Final';
+  if (matchesInRound === 4) return 'Cuartos de Final';
+  if (matchesInRound === 2) return 'Semifinal';
+  return 'Final';
+}
+
+function generateBracket(leagueId, teams) {
+  return new Promise((resolve, reject) => {
+    const shuffled = [...teams].sort(() => Math.random() - 0.5);
+    const tx = dbInstance.transaction('matches', 'readwrite');
+    const store = tx.objectStore('matches');
+    const startDate = new Date();
+ 
+   
+    function addMatch(match) {
+      return new Promise((res, rej) => {
+        const req = store.add(match);
+        req.onsuccess = () => res(req.result);
+        req.onerror = () => rej(req.error);
+      });
+    }
+    function getMatch(id) {
+      return new Promise((res, rej) => {
+        const req = store.get(id);
+        req.onsuccess = () => res(req.result);
+        req.onerror = () => rej(req.error);
+      });
+    }
+    function putMatch(match) {
+      return new Promise((res, rej) => {
+        const req = store.put(match);
+        req.onsuccess = () => res();
+        req.onerror = () => rej(req.error);
+      });
+    }
+ 
+    (async () => {
+      try {
+        let totalMatchesInRound = shuffled.length / 2;
+        let previousRoundMatchIds = [];
+ 
+        for (let i = 0; i < shuffled.length; i += 2) {
+          const date = new Date(startDate);
+          date.setDate(date.getDate() + 7);
+ 
+          const newId = await addMatch({
+            leagueId: Number(leagueId),
+            homeTeamId: shuffled[i].id,
+            awayTeamId: shuffled[i + 1].id,
+            date: date.toISOString(),
+            status: 'programado',
+            homeScore: null,
+            awayScore: null,
+            round: getRoundName(totalMatchesInRound, shuffled.length),
+            nextMatchId: null
+          });
+          previousRoundMatchIds.push(newId);
+        }
+ 
+        totalMatchesInRound = totalMatchesInRound / 2;
+ 
+        while (totalMatchesInRound >= 1) {
+          const currentRoundIds = [];
+          const date = new Date(startDate);
+          date.setDate(date.getDate() + 14);
+ 
+          for (let i = 0; i < totalMatchesInRound; i++) {
+            const newId = await addMatch({
+              leagueId: Number(leagueId),
+              homeTeamId: null,
+              awayTeamId: null,
+              date: date.toISOString(),
+              status: 'pendiente',
+              homeScore: null,
+              awayScore: null,
+              round: getRoundName(totalMatchesInRound, shuffled.length),
+              nextMatchId: null
+            });
+            currentRoundIds.push(newId);
+          }
+ 
+
+          for (let i = 0; i < previousRoundMatchIds.length; i += 2) {
+            const nextId = currentRoundIds[i / 2];
+ 
+            const m1 = await getMatch(previousRoundMatchIds[i]);
+            m1.nextMatchId = nextId;
+            await putMatch(m1);
+ 
+            const m2 = await getMatch(previousRoundMatchIds[i + 1]);
+            m2.nextMatchId = nextId;
+            await putMatch(m2);
+          }
+ 
+          previousRoundMatchIds = currentRoundIds;
+          totalMatchesInRound = totalMatchesInRound / 2;
+        }
+ 
+        resolve();
+      } catch (err) {
+        reject(err);
+      }
+    })();
+ 
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(new Error('Transacción cancelada'));
+  });
+}
