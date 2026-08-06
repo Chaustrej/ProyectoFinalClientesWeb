@@ -79,15 +79,15 @@ Todas las operaciones pasan por la capa centralizada en `db.js` — ningún comp
 
 ## 7. Capturas de pantalla
 
-- [![alt text](/capture/image.png) ] Dashboard (`#dashboard`)
-- [ ![alt text](/capture/image-1.png)] Ligas (`#leagues`)
-- [![alt text](/capture/image-2.png) ] Equipos (`#teams`)
-- [![alt text](/capture/image-3.png) ] Detalle de Equipo (`#team/:id`)
-- [ ![alt text](/capture/image-4.png)] Jugadores (`#players`)
-- [ ![alt text](/capturei/mage-5.png)] Detalle de Jugador (`#player/:id`)
-- [ ![alt text](/capture/image-6.png)] Partidos (`#matches`)
-- [![alt text](/capture/image-7.png) ] Detalle de Partido (`#match/:id`)
-- [![alt text](/capture/image-8.png) ] Estadísticas (`#stats`) 
+- [![alt text](/capture/image.png) ] Dashboard 
+- [ ![alt text](/capture/image-1.png)] Ligas
+- [![alt text](/capture/image-2.png) ] Equipos 
+- [![alt text](/capture/image-3.png) ] Detalle de Equipo 
+- [ ![alt text](/capture/image-4.png)] Jugadores 
+- [ ![alt text](/capturei/mage-5.png)] Detalle de Jugador 
+- [ ![alt text](/capture/image-6.png)] Partidos
+- [![alt text](/capture/image-7.png) ] Detalle de Partido 
+- [![alt text](/capture/image-8.png) ] Estadísticas 
 
 ## 8. Tecnologías
 
