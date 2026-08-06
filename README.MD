@@ -48,3 +48,47 @@ No requiere instalación ni servidor local.
 
 
 ## 5. Esquema de IndexedDB
+
+
+
+Base de datos: `leaguehub-db`
+
+| Object Store | Índices | Relación |
+|---|---|---|
+| `leagues` | `by_name` (único), `by_active` | Raíz del modelo |
+| `teams` | `by_league`, `by_name` | Pertenece a una `league` (`leagueId`) |
+| `players` | `by_team`, `by_name` | Pertenece a un `team` (`teamId`) |
+| `matches` | `by_league`, `by_home`, `by_away`, `by_date`, `by_status` | Pertenece a una `league`; referencia dos `teams` (`homeTeamId`, `awayTeamId`); en eliminación directa referencia al siguiente partido (`nextMatchId`) |
+| `events` | `by_match`, `by_player` | Pertenece a un `match` (`matchId`) y a un `player` (`playerId`) |
+
+Todas las operaciones pasan por la capa centralizada en `db.js` — ningún componente abre una transacción de IndexedDB directamente.
+
+## 6. Decisiones técnicas relevantes
+
+**Transacciones de integridad.** Las operaciones que afectan más de una entidad (finalizar partido, deshacer partido, eliminar equipo en cascada, activar liga, importar liga) se ejecutan dentro de una única transacción `readwrite` sobre todos los object stores involucrados. Si cualquier paso falla, `tx.onabort` revierte todo automáticamente, evitando estados intermedios inconsistentes (por ejemplo, un partido marcado como finalizado sin que las estadísticas de los equipos se hayan actualizado).
+
+**Cálculo de la tabla de posiciones.** Se ordena por puntos ejemplo: 3 victoria / 1 empate / 0 derrota, y en caso de empate se desempata primero por diferencia de gol y luego por goles a favor.
+
+**Adaptación por deporte.** Es puramente cosmética: un objeto central en `sports-terms.js` mapea cada deporte a sus etiquetas visibles como nombre del evento de anotación, etiquetas de tabla, ranking, ícono y color. Ningún componente tiene strings de deporte hardcodeados; todos leen del mapa según el deporte de la liga activa.
+
+**Generación de bracket** El sorteo de la primera ronda es aleatorio. Las rondas siguientes se generan como partidos "plantilla" con equipos `null` (estado `pendiente`), enlazados mediante el campo `nextMatchId`. Al finalizar un partido, el ganador se coloca automáticamente en el slot vacío del partido siguiente, dentro de la misma transacción de "Finalizar partido".
+
+**Eventos en memoria antes de finalizar.** Mientras un partido está "Programado", las anotaciones que se van agregando se mantienen en un array en memoria (no se persisten en IndexedDB todavía). Solo se guardan en la base de datos como parte de la transacción de "Finalizar partido", junto con la actualización de estadísticas.
+
+**Limitación conocida en importación.** Al importar una liga en modalidad eliminación directa, el campo `nextMatchId` (enlace entre rondas del bracket) no se remapea automáticamente a los nuevos IDs generados — los partidos importados quedan sin ese enlace. El resto de los datos (equipos, jugadores, partidos, eventos, marcadores) se restaura correctamente.
+
+## 7. Capturas de pantalla
+
+- [![alt text](/capture/image.png) ] Dashboard (`#dashboard`)
+- [ ![alt text](/capture/image-1.png)] Ligas (`#leagues`)
+- [![alt text](/capture/image-2.png) ] Equipos (`#teams`)
+- [![alt text](/capture/image-3.png) ] Detalle de Equipo (`#team/:id`)
+- [ ![alt text](/capture/image-4.png)] Jugadores (`#players`)
+- [ ![alt text](/capturei/mage-5.png)] Detalle de Jugador (`#player/:id`)
+- [ ![alt text](/capture/image-6.png)] Partidos (`#matches`)
+- [![alt text](/capture/image-7.png) ] Detalle de Partido (`#match/:id`)
+- [![alt text](/capture/image-8.png) ] Estadísticas (`#stats`) 
+
+## 8. Tecnologías
+
+HTML, CSS y JavaScript vanilla (sin frameworks). Chart.js como única librería externa, cargada desde CDN, usada para los 6 gráficos de `#dashboard` y `#stats`.
